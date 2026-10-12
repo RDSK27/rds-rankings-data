@@ -10,7 +10,7 @@
 const fs=require('fs'), path=require('path');
 const PROJECT='rds-reaction-test';
 const BASE='https://firestore.googleapis.com/v1/projects/'+PROJECT+'/databases/(default)/documents';
-const FULL_EVERY_H=20, MARGIN_H=6;
+const FULL_EVERY_H=20, MARGIN_H=2;   // margen 2 h: cada pasada relee solo lo de las ultimas 2 h; las marcas subidas mas tarde entran en la lectura completa diaria
 const TENIS_MASK=['avgRT','avgPrec','count','date','disc','hits','index','matchMode','mode','name','penaliza','readOk','readTotal','setScores','setsMe','setsRival','trials','won'];
 /* tsf = campo de fecha numerico por el que se pide lo nuevo (igual que mkInc de SuiteRDS) */
 const COLS=[
@@ -30,10 +30,24 @@ const COLS=[
   { name:'scores_reaction_10_normal_press_nosound', tsf:'ts' },   // Clasificacion de SuiteRDS
   { name:'scores_reaction_10_normal_press_sound', tsf:'ts' }      // combo oficial de Campeonatos
 ];
+/* Reaction guarda UNA coleccion por combinacion (rondas x modo x pulso x sonido). Firestore no deja listar colecciones sin permisos, asi que se prueban
+   los nombres posibles (misma matriz que rdsPrepare de la app) UNA VEZ cada FULL_EVERY_H horas; solo las que tienen marcas generan JSON. */
+{
+  const have=new Set(COLS.map(c=>c.name));
+  [10,15,30,50].forEach(r=>['normal','limite','distractor','gonogo'].forEach(m=>['press','press2','press2i','release','release2','release2i'].forEach(p=>{
+    (m==='distractor'||m==='gonogo' ? ['nosound'] : ['sound','nosound']).forEach(sn=>{
+      const name='scores_reaction_'+r+'_'+m+'_'+p+'_'+sn;
+      if(!have.has(name)) COLS.push({ name:name, tsf:'ts', probe:true });
+    });
+  })));
+}
 const args=process.argv.slice(2), FORCE_FULL=args.includes('--full');
 const ONLY=args.includes('--only') ? args[args.indexOf('--only')+1] : null;
 const DIR=path.join(__dirname,'data');
 let reads=0;
+const STATE_FILE=path.join(DIR,'_state.json');
+let state={ probeAt:{} }; try{ state=JSON.parse(fs.readFileSync(STATE_FILE,'utf8')); if(!state.probeAt) state.probeAt={}; }catch(e){}
+let stateDirty=false;
 
 function rv(v){
   if('stringValue' in v) return v.stringValue;
@@ -86,6 +100,11 @@ async function run(c){
   const file=path.join(DIR,c.name+'.json');
   let cur=null; try{ cur=JSON.parse(fs.readFileSync(file,'utf8')); }catch(e){}
   const now=Date.now();
+  if(c.probe && !cur){   // combinacion sin JSON: solo se prueba si ya pasaron FULL_EVERY_H horas desde la ultima vez (vacia)
+    const last=state.probeAt[c.name]||0;
+    if(!FORCE_FULL && now-last<FULL_EVERY_H*36e5) return;
+    state.probeAt[c.name]=now; stateDirty=true;
+  }
   const needFull=FORCE_FULL || !cur || !cur.fullAt || now-cur.fullAt>FULL_EVERY_H*36e5;
   let byId={}, fullAt=cur&&cur.fullAt||0, mode;
   if(needFull){
@@ -95,6 +114,7 @@ async function run(c){
     (await tailRead(c, (cur.maxTs||0)-MARGIN_H*36e5)).forEach(d=>{ byId[d.id]=d; }); mode='nuevas';
   }
   const docs=Object.keys(byId).sort().map(k=>byId[k]);
+  if(c.probe && !cur && docs.length===0){ return; }   // vacia: sin archivo (el cliente cae a Firestore, 1 lectura)
   const next={ v:1, col:c.name, tsf:c.tsf, fullAt:fullAt, maxTs:maxTs(docs,c.tsf), n:docs.length, docs:docs };
   const before=cur ? JSON.stringify({ fullAt:cur.fullAt, maxTs:cur.maxTs, docs:cur.docs }) : '';
   const after=JSON.stringify({ fullAt:next.fullAt, maxTs:next.maxTs, docs:next.docs });
@@ -109,6 +129,7 @@ async function run(c){
     if(ONLY && c.name!==ONLY) continue;
     try{ await run(c); }catch(e){ fail++; console.error('FALLO '+c.name+': '+e.message); }
   }
+  if(stateDirty && !ONLY){ fs.writeFileSync(STATE_FILE, JSON.stringify({ probeAt:Object.fromEntries(Object.keys(state.probeAt).sort().map(k=>[k,state.probeAt[k]])) })); }
   console.log('lecturas estimadas de Firestore: '+reads);
   if(fail) process.exitCode=1;
 })();
