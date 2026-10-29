@@ -16,6 +16,7 @@ const TENIS_MASK=['avgRT','avgPrec','count','date','disc','hits','index','matchM
 const COLS=[
   { name:'scores_ballcoordination', tsf:'date' },
   { name:'scores_900coordination', tsf:'ts', probe:true },   // app nueva (2026-10-20): sin archivo hasta que tenga marcas
+  { name:'scores_memorytouch', tsf:'ts', probe:true },   // app nueva (2026-10-29): sin archivo hasta que tenga marcas
   { name:'scores_circuit', tsf:'ts' },
   { name:'scores_gimnasia', tsf:'ts' },
   { name:'scores_lights', tsf:'ts' },
