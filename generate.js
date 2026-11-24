@@ -23,6 +23,8 @@ const COLS=[
   { name:'scores_memorycards', tsf:'ts' },
   { name:'scores_perception', tsf:'ts' },
   { name:'scores_perception2', tsf:'ts', probe:true },   // app nueva (2026-10-14): sin archivo hasta que tenga marcas
+  { name:'scores_processing3', tsf:'ts', probe:true },   // app nueva (2026-11-16): sin archivo hasta que tenga marcas
+  { name:'scores_schulte', tsf:'ts', probe:true },   // app nueva (2026-11-24, Schulte Perception): sin archivo hasta que tenga marcas
   { name:'scores_processing', tsf:'ts' },
   { name:'scores_processing2', tsf:'ts' },
   { name:'scores_rallymemory', tsf:'ts' },
